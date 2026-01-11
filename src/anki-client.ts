@@ -90,8 +90,19 @@ export async function deckExists(deckName: string): Promise<boolean> {
 
 /**
  * Ensure the deck exists, create if not
+ * Also ensures parent deck exists for subdecks
  */
 export async function ensureDeck(deckName: string): Promise<void> {
+  // If this is a subdeck (contains ::), ensure parent exists first
+  const parts = deckName.split('::');
+  if (parts.length > 1) {
+    // Create parent deck first
+    const parentDeck = parts[0]!;
+    await invokeAnkiConnect('createDeck', { deck: parentDeck });
+    logger.debug(`Parent deck "${parentDeck}" is ready`);
+  }
+  
+  // Create the full deck (including subdeck)
   await invokeAnkiConnect('createDeck', { deck: deckName });
   logger.info(`Deck "${deckName}" is ready`);
 }

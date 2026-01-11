@@ -20,16 +20,19 @@ import {
   addNote,
   syncWithAnkiWeb,
   deckExists,
-  getSubdeckName
+  getSubdeckName,
+  type GeneratedFlashcard
 } from '../src/anki-client';
 import { logger } from '../src/logger';
 import { join } from 'path';
+import { writeFile, mkdir } from 'fs/promises';
 
 // ============== CONFIG ==============
 
 const DOCS_DIR = process.env.DOCS_DIR || join(import.meta.dir, '..', 'docs');
 const GEMINI_PROXY_URL = process.env.GEMINI_PROXY_URL || 'http://localhost:4000';
 const PARENT_DECK = process.argv[2] || process.env.PARENT_DECK || 'פילוסופיה פוליטית';
+const CACHE_DIR = join(import.meta.dir, '..', '.cache');
 
 // ============== MAIN ==============
 
@@ -94,6 +97,9 @@ async function main() {
   const paragraphs = flattenParagraphs(documentsToProcess);
   logger.info(`Total paragraphs to process: ${paragraphs.length}`);
   
+  // Ensure cache directory exists
+  await mkdir(CACHE_DIR, { recursive: true });
+  
   // Process paragraphs
   logger.divider('Generating Flashcards');
   
@@ -103,11 +109,12 @@ async function main() {
   
   for (let i = 0; i < paragraphs.length; i++) {
     const para = paragraphs[i]!;
-    logger.step(i + 1, paragraphs.length, `[${para.meta.thinker}] Paragraph ${para.paragraphIndex}/${para.totalParagraphs}`);
+    const extraCardsLabel = para.extraCards ? ' [EXTRA]' : '';
+    logger.step(i + 1, paragraphs.length, `[${para.meta.thinker}] Paragraph ${para.paragraphIndex}/${para.totalParagraphs}${extraCardsLabel}`);
     
     try {
       // Generate flashcards via proxy
-      const flashcards = await generateFlashcards(para.paragraph, para.meta, GEMINI_PROXY_URL);
+      const flashcards = await generateFlashcards(para.paragraph, para.meta, GEMINI_PROXY_URL, para.extraCards);
       
       if (flashcards.length === 0) {
         logger.debug(`No cards generated for paragraph ${para.paragraphIndex}`);
@@ -116,6 +123,22 @@ async function main() {
       
       totalGenerated += flashcards.length;
       logger.info(`  → Generated ${flashcards.length} cards`);
+      
+      // Cache the flashcards before adding to Anki
+      const cacheFilename = `${para.filename.replace(/[^a-zA-Z0-9א-ת]/g, '_')}_para${para.paragraphIndex}_${Date.now()}.json`;
+      const cachePath = join(CACHE_DIR, cacheFilename);
+      await writeFile(cachePath, JSON.stringify({
+        paragraph: para.paragraph,
+        meta: para.meta,
+        extraCards: para.extraCards,
+        flashcards,
+        timestamp: new Date().toISOString()
+      }, null, 2));
+      logger.debug(`  💾 Cached to ${cacheFilename}`);
+      
+      // Ensure deck exists before adding notes
+      const fullDeckName = getSubdeckName(para.meta, PARENT_DECK);
+      await ensureDeck(fullDeckName);
       
       // Add to Anki
       for (const card of flashcards) {

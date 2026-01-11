@@ -25,6 +25,7 @@ export interface DocumentMeta {
 export interface ParsedDocument {
   meta: DocumentMeta;
   paragraphs: string[];
+  paragraphsWithExtra: Array<{ text: string; extraCards: boolean }>;
   filename: string;
 }
 
@@ -34,6 +35,7 @@ export interface ParagraphWithMeta {
   totalParagraphs: number;
   meta: DocumentMeta;
   filename: string;
+  extraCards: boolean;
 }
 
 /**
@@ -84,17 +86,53 @@ function parseDocumentContent(text: string, filename: string): ParsedDocument {
     logger.warn(`Missing required meta fields in ${filename}. Thinker: "${meta.thinker}", Work: "${meta.work}"`);
   }
   
-  // Parse content section - split by separator (---)
-  const paragraphs = contentSection
-    .split(/\n---\n|\n-{3,}\n/)
-    .map(p => p.trim())
-    .filter(p => p.length > 0);
+  // Parse content section - each paragraph starts with --- or ---+
+  // Format: ---\nparagraph\n---+\nparagraph\n etc.
+  const paragraphsWithExtra: Array<{ text: string; extraCards: boolean }> = [];
   
-  logger.info(`Found ${paragraphs.length} paragraphs in ${filename}`);
+  // Split by separator lines (--- or ---+) at the start of lines
+  const lines = contentSection.split('\n');
+  let currentParagraph = '';
+  let currentExtraCards = false;
+  let inParagraph = false;
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    
+    // Check if this is a separator line
+    if (trimmedLine === '---' || trimmedLine === '---+') {
+      // Save previous paragraph if it exists
+      if (inParagraph && currentParagraph.trim()) {
+        paragraphsWithExtra.push({
+          text: currentParagraph.trim(),
+          extraCards: currentExtraCards
+        });
+      }
+      
+      // Start new paragraph
+      currentParagraph = '';
+      currentExtraCards = trimmedLine === '---+';
+      inParagraph = true;
+    } else if (inParagraph) {
+      // Add to current paragraph
+      currentParagraph += (currentParagraph ? '\n' : '') + line;
+    }
+  }
+  
+  // Don't forget the last paragraph
+  if (inParagraph && currentParagraph.trim()) {
+    paragraphsWithExtra.push({
+      text: currentParagraph.trim(),
+      extraCards: currentExtraCards
+    });
+  }
+  
+  logger.info(`Found ${paragraphsWithExtra.length} paragraphs in ${filename}`);
   
   return {
     meta,
-    paragraphs,
+    paragraphs: paragraphsWithExtra.map(p => p.text),
+    paragraphsWithExtra,
     filename
   };
 }
@@ -174,13 +212,15 @@ export function flattenParagraphs(documents: ParsedDocument[]): ParagraphWithMet
   const allParagraphs: ParagraphWithMeta[] = [];
   
   for (const doc of documents) {
-    for (let i = 0; i < doc.paragraphs.length; i++) {
+    for (let i = 0; i < doc.paragraphsWithExtra.length; i++) {
+      const paraData = doc.paragraphsWithExtra[i]!;
       allParagraphs.push({
-        paragraph: doc.paragraphs[i]!,
+        paragraph: paraData.text,
         paragraphIndex: i + 1,
-        totalParagraphs: doc.paragraphs.length,
+        totalParagraphs: doc.paragraphsWithExtra.length,
         meta: doc.meta,
-        filename: doc.filename
+        filename: doc.filename,
+        extraCards: paraData.extraCards
       });
     }
   }

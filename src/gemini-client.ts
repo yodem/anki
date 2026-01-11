@@ -15,7 +15,8 @@ const DEFAULT_PROXY_URL = 'http://localhost:4000';
 export async function generateFlashcards(
   paragraph: string,
   meta: DocumentMeta,
-  proxyUrl: string = DEFAULT_PROXY_URL
+  proxyUrl: string = DEFAULT_PROXY_URL,
+  extraCards: boolean = false
 ): Promise<GeneratedFlashcard[]> {
   const response = await fetch(`${proxyUrl}/generateFlashcards/`, {
     method: 'POST',
@@ -25,7 +26,8 @@ export async function generateFlashcards(
       thinker: meta.thinker,
       work: meta.work,
       chapter: meta.chapter,
-      language: 'he'
+      language: 'he',
+      extraCards
     })
   });
   
