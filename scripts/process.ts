@@ -137,14 +137,16 @@ async function main() {
       logger.debug(`  💾 Cached to ${cacheFilename}`);
       
       // Ensure deck exists before adding notes
-      const fullDeckName = getSubdeckName(para.meta, PARENT_DECK);
+      const fullDeckName = para.subDeck
+        ? `${PARENT_DECK}::${para.subDeck}`
+        : getSubdeckName(para.meta, PARENT_DECK);
       await ensureDeck(fullDeckName);
-      
+
       // Add to Anki
       for (const card of flashcards) {
-        const note = flashcardToNote(card, para.meta, PARENT_DECK, para.paragraph);
+        const note = flashcardToNote(card, para.meta, PARENT_DECK, para.paragraph, para.subDeck);
         const result = await addNote(note);
-        
+
         if (result.success) {
           totalAdded++;
         } else {

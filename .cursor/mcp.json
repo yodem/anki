@@ -1,3 +1,15 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "anki": {
+      "auto_connect_on_startup": true,
+      "cors_expose_headers": [
+        "mcp-session-id",
+        "mcp-protocol-version"
+      ],
+      "cors_origins": [],
+      "http_host": "127.0.0.1",
+      "http_port": 3141,
+      "mode": "http"
+    }
+  }
 }

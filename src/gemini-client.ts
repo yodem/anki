@@ -18,7 +18,13 @@ export async function generateFlashcards(
   proxyUrl: string = DEFAULT_PROXY_URL,
   extraCards: boolean = false
 ): Promise<GeneratedFlashcard[]> {
-  const response = await fetch(`${proxyUrl}/generateFlashcards/`, {
+  // Domain-based routing
+  const domain = meta.domain || 'political';
+  const endpoint = `/anki/philosophy/${domain}`;
+
+  logger.debug(`Using endpoint: ${endpoint} for domain: ${domain}`);
+
+  const response = await fetch(`${proxyUrl}${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

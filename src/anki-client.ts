@@ -142,17 +142,21 @@ export function flashcardToNote(
   flashcard: GeneratedFlashcard,
   meta: DocumentMeta,
   parentDeck: string,
-  sourceParagraph: string
+  sourceParagraph: string,
+  customSubDeck?: string
 ): AnkiNote {
   // Format source with quotation marks and metadata in parentheses
-  const sourceMetadata = meta.chapter 
+  const sourceMetadata = meta.chapter
     ? `(${meta.thinker}, ${meta.work}, ${meta.chapter})`
     : `(${meta.thinker}, ${meta.work})`;
   const formattedSource = `"${sourceParagraph}" ${sourceMetadata}`;
-  
+
   // Create subdeck name: "פילוסופיה פוליטית::thinker-work-chapter"
-  const fullDeckName = getSubdeckName(meta, parentDeck);
-  
+  // If customSubDeck is provided, use it instead of the default
+  const fullDeckName = customSubDeck
+    ? `${parentDeck}::${customSubDeck}`
+    : getSubdeckName(meta, parentDeck);
+
   return {
     deckName: fullDeckName,
     modelName: MODEL_NAME,

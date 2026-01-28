@@ -20,12 +20,13 @@ export interface DocumentMeta {
   thinker: string;
   work: string;
   chapter: string;
+  domain?: string;
 }
 
 export interface ParsedDocument {
   meta: DocumentMeta;
   paragraphs: string[];
-  paragraphsWithExtra: Array<{ text: string; extraCards: boolean }>;
+  paragraphsWithExtra: Array<{ text: string; extraCards: boolean; subDeck?: string }>;
   filename: string;
 }
 
@@ -36,6 +37,7 @@ export interface ParagraphWithMeta {
   meta: DocumentMeta;
   filename: string;
   extraCards: boolean;
+  subDeck?: string;
 }
 
 /**
@@ -70,30 +72,47 @@ function parseDocumentContent(text: string, filename: string): ParsedDocument {
   for (const line of metaLines) {
     const [key, ...valueParts] = line.split(':');
     const value = valueParts.join(':').trim();
-    
+
     if (key!.toLowerCase().trim() === 'thinker') {
       meta.thinker = value;
     } else if (key!.toLowerCase().trim() === 'work') {
       meta.work = value;
     } else if (key!.toLowerCase().trim() === 'chapter') {
       meta.chapter = value;
+    } else if (key!.toLowerCase().trim() === 'domain') {
+      meta.domain = value;
     }
   }
-  
+
   logger.debug(`Parsed meta`, meta);
-  
+
   if (!meta.thinker || !meta.work) {
     logger.warn(`Missing required meta fields in ${filename}. Thinker: "${meta.thinker}", Work: "${meta.work}"`);
+  }
+
+  // Infer domain from thinker if not specified
+  if (!meta.domain) {
+    if (meta.thinker === 'קאנט' || meta.thinker === 'Kant') {
+      meta.domain = 'kant';
+      logger.debug(`Inferred domain "kant" from thinker "${meta.thinker}"`);
+    } else {
+      meta.domain = 'political';
+      logger.debug(`Defaulting to domain "political" for thinker "${meta.thinker}"`);
+    }
   }
   
   // Parse content section - each paragraph starts with --- or ---+
   // Format: ---\nparagraph\n---+\nparagraph\n etc.
-  const paragraphsWithExtra: Array<{ text: string; extraCards: boolean }> = [];
+  const paragraphsWithExtra: Array<{ text: string; extraCards: boolean; subDeck?: string }> = [];
+  
+  // SUB_DECK pattern: [[SUB_DECK - ...]] or [[SUBDECK - ...]] (case-insensitive)
+  const subDeckPattern = /\[\[SUB_?DECK\s*-\s*(.+?)\]\]/i;
   
   // Split by separator lines (--- or ---+) at the start of lines
   const lines = contentSection.split('\n');
   let currentParagraph = '';
   let currentExtraCards = false;
+  let currentSubDeck: string | undefined = undefined;
   let inParagraph = false;
   
   for (const line of lines) {
@@ -105,7 +124,8 @@ function parseDocumentContent(text: string, filename: string): ParsedDocument {
       if (inParagraph && currentParagraph.trim()) {
         paragraphsWithExtra.push({
           text: currentParagraph.trim(),
-          extraCards: currentExtraCards
+          extraCards: currentExtraCards,
+          subDeck: currentSubDeck
         });
       }
       
@@ -114,6 +134,15 @@ function parseDocumentContent(text: string, filename: string): ParsedDocument {
       currentExtraCards = trimmedLine === '---+';
       inParagraph = true;
     } else if (inParagraph) {
+      // Check if this line contains a SUB_DECK pattern
+      const subDeckMatch = trimmedLine.match(subDeckPattern);
+      if (subDeckMatch) {
+        // Extract SUB_DECK value (text after the dash, trimmed)
+        currentSubDeck = subDeckMatch[1]!.trim();
+        // Don't add this line to the paragraph content
+        continue;
+      }
+      
       // Add to current paragraph
       currentParagraph += (currentParagraph ? '\n' : '') + line;
     }
@@ -123,7 +152,8 @@ function parseDocumentContent(text: string, filename: string): ParsedDocument {
   if (inParagraph && currentParagraph.trim()) {
     paragraphsWithExtra.push({
       text: currentParagraph.trim(),
-      extraCards: currentExtraCards
+      extraCards: currentExtraCards,
+      subDeck: currentSubDeck
     });
   }
   
@@ -220,7 +250,8 @@ export function flattenParagraphs(documents: ParsedDocument[]): ParagraphWithMet
         totalParagraphs: doc.paragraphsWithExtra.length,
         meta: doc.meta,
         filename: doc.filename,
-        extraCards: paraData.extraCards
+        extraCards: paraData.extraCards,
+        subDeck: paraData.subDeck
       });
     }
   }

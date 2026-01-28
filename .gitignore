@@ -6,6 +6,9 @@ out
 dist
 *.tgz
 
+# documents
+*.txt
+
 # code coverage
 coverage
 *.lcov
@@ -27,8 +30,11 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .cache
 *.tsbuildinfo
 
-# IntelliJ based IDEs
+# IDEs and editor config
 .idea
+.cursor
+.claude
+.vscode
 
 # Finder (MacOS) folder config
 .DS_Store
