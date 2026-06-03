@@ -13,26 +13,30 @@
  */
 
 import { parseTxtFile, type ParsedDocument } from '../src/txt-processor';
-import { generateFlashcards } from '../src/gemini-client';
-import { 
-  checkAnkiConnection, 
-  ensureDeck, 
-  checkModel, 
-  flashcardToNote, 
+import {
+  checkAnkiConnection,
+  ensureDeck,
+  checkModel,
+  flashcardToNote,
   addNote,
   syncWithAnkiWeb,
   getSubdeckName,
-  type GeneratedFlashcard
 } from '../src/anki-client';
+import { loadConfig } from '../src/config';
+import { parseCliArgs } from '../src/cli';
+import { getProvider, applyMetaTags } from '../src/providers';
 import { logger } from '../src/logger';
 import { join } from 'path';
 import { writeFile, mkdir } from 'fs/promises';
 
 // ============== CONFIG ==============
 
-const DOCS_DIR = process.env.DOCS_DIR || join(import.meta.dir, '..', 'docs');
-const GEMINI_PROXY_URL = process.env.GEMINI_PROXY_URL || 'http://localhost:4000';
-const PARENT_DECK = process.env.PARENT_DECK || 'פילוסופיה פוליטית';
+const cliArgs = parseCliArgs();
+const config = loadConfig({ provider: cliArgs.provider, dryRun: cliArgs.dryRun });
+const provider = getProvider(config);
+
+const DOCS_DIR = config.docsDir || join(import.meta.dir, '..', 'docs');
+const PARENT_DECK = config.parentDeck;
 const CACHE_DIR = join(import.meta.dir, '..', '.cache');
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 2000; // 2 seconds
@@ -57,14 +61,14 @@ async function retryWithBackoff<T>(
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  
+  const args = cliArgs.positionals;
+
   if (args.length < 2) {
-    logger.error('Usage: bun run scripts/retry-paragraphs.ts <filename> <paragraph-index1> [paragraph-index2] ...');
+    logger.error('Usage: bun run scripts/retry-paragraphs.ts <filename> <paragraph-index1> [paragraph-index2] ... [--provider <name>] [--dry-run]');
     logger.error('Example: bun run scripts/retry-paragraphs.ts "שיעור 4" 26 29');
     process.exit(1);
   }
-  
+
   const filename = args[0]!;
   const paragraphIndices = args.slice(1).map(arg => parseInt(arg, 10)).filter(n => !isNaN(n));
   
@@ -78,21 +82,25 @@ async function main() {
   logger.info(`📄 File: ${filename}`);
   logger.info(`📋 Paragraphs to retry: ${paragraphIndices.join(', ')}`);
   logger.info(`🎯 Parent Deck: ${PARENT_DECK}`);
-  logger.info(`🤖 Proxy: ${GEMINI_PROXY_URL}`);
-  
-  // Check Anki connection
-  logger.divider('Checking Anki');
-  const ankiOk = await checkAnkiConnection();
-  if (!ankiOk) {
-    process.exit(1);
+  logger.info(`🤖 Provider: ${config.provider}${config.dryRun ? ' (DRY RUN — no Anki writes)' : ''}`);
+
+  // Check Anki connection (skipped in dry-run)
+  if (!config.dryRun) {
+    logger.divider('Checking Anki');
+    const ankiOk = await checkAnkiConnection();
+    if (!ankiOk) {
+      process.exit(1);
+    }
+
+    const modelOk = await checkModel();
+    if (!modelOk) {
+      process.exit(1);
+    }
+
+    await ensureDeck(PARENT_DECK);
+  } else {
+    logger.warn('Dry-run mode: skipping Anki connection, model, and deck checks');
   }
-  
-  const modelOk = await checkModel();
-  if (!modelOk) {
-    process.exit(1);
-  }
-  
-  await ensureDeck(PARENT_DECK);
   
   // Parse the specific document
   logger.divider('Parsing Document');
@@ -149,11 +157,15 @@ async function main() {
     logger.step(i + 1, paragraphsToRetry.length, `[${para.meta.thinker}] Paragraph ${para.paragraphIndex}/${para.totalParagraphs}${extraCardsLabel}`);
     
     try {
-      // Generate flashcards via proxy with retry logic
+      // Generate flashcards via the selected provider, with retry logic.
       const flashcards = await retryWithBackoff(async () => {
-        return await generateFlashcards(para.paragraph, para.meta, GEMINI_PROXY_URL, para.extraCards);
+        const rawCards = await provider.generateFlashcards(para.paragraph, para.meta, {
+          extraCards: para.extraCards,
+          language: 'he',
+        });
+        return applyMetaTags(rawCards, para.meta);
       });
-      
+
       if (flashcards.length === 0) {
         logger.debug(`No cards generated for paragraph ${para.paragraphIndex}`);
         continue;
@@ -169,11 +181,17 @@ async function main() {
         paragraph: para.paragraph,
         meta: para.meta,
         extraCards: para.extraCards,
+        provider: config.provider,
         flashcards,
         timestamp: new Date().toISOString()
       }, null, 2));
       logger.debug(`  💾 Cached to ${cacheFilename}`);
-      
+
+      if (config.dryRun) {
+        // Dry-run: cache only, do not write to Anki.
+        continue;
+      }
+
       // Ensure deck exists before adding notes
       const fullDeckName = getSubdeckName(para.meta, PARENT_DECK);
       await ensureDeck(fullDeckName);
@@ -202,9 +220,11 @@ async function main() {
     }
   }
   
-  // Sync with AnkiWeb
-  logger.divider('Syncing');
-  await syncWithAnkiWeb();
+  // Sync with AnkiWeb (skipped in dry-run)
+  if (!config.dryRun) {
+    logger.divider('Syncing');
+    await syncWithAnkiWeb();
+  }
   
   // Summary
   logger.divider('Done!');

@@ -33,7 +33,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # IDEs and editor config
 .idea
 .cursor
-.claude
+# Track the in-repo Claude Code skill, but ignore local Claude settings/state.
+.claude/*
+!.claude/skills/
 .vscode
 
 # Finder (MacOS) folder config
