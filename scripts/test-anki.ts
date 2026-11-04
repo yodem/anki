@@ -20,7 +20,7 @@ for (const port of ports) {
     });
     
     if (response.ok) {
-      const data = await response.json();
+      const data = await response.json() as { result?: unknown };
       if (data.result) {
         console.log(`✅ Found AnkiConnect on port ${port}!`);
         console.log(`   Version: ${data.result}`);

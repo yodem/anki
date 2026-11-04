@@ -4,12 +4,16 @@
   "private": true,
   "scripts": {
     "process": "bun run scripts/process.ts",
-    "check": "bun run --bun tsc --noEmit"
+    "check": "bun run --bun tsc --noEmit",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1"
   }
 }
